@@ -11,17 +11,22 @@ using IxMilia.Dxf.Entities;
 
 namespace IxMilia.Converters
 {
+    using AttributeGeneratorFunc = Func<string, IDictionary<string, string>>;
     public struct DxfToSvgConverterOptions
     {
         public ConverterDxfRect DxfSource { get; }
         public ConverterSvgRect SvgDestination { get; }
         public string SvgId { get; }
-
-        public DxfToSvgConverterOptions(ConverterDxfRect dxfSource, ConverterSvgRect svgDestination, string svgId = null)
+        public IEnumerable<string> Layers { get; }
+        public AttributeGeneratorFunc AttributesGenerator { get; }
+        public DxfToSvgConverterOptions(ConverterDxfRect dxfSource, ConverterSvgRect svgDestination, string svgId = null,
+                                        IEnumerable<string> layers = null, AttributeGeneratorFunc attributeGenerator = null)
         {
             DxfSource = dxfSource;
             SvgDestination = svgDestination;
             SvgId = svgId;
+            Layers = layers;
+            AttributesGenerator = attributeGenerator;
         }
     }
 
@@ -33,7 +38,13 @@ namespace IxMilia.Converters
         {
             // adapted from https://github.com/ixmilia/bcad/blob/main/src/IxMilia.BCad.FileHandlers/Plotting/Svg/SvgPlotter.cs
             var world = new XElement(Xmlns + "g");
-            foreach (var layer in source.Layers.OrderBy(l => l.Name))
+            IEnumerable<DxfLayer> targetLayers;
+            if (options.Layers != null)
+                targetLayers = source.Layers.Where(l => options.Layers.Contains(l.Name)).OrderBy(l => l.Name);
+            else
+                targetLayers = source.Layers.OrderBy(l => l.Name);
+
+            foreach (var layer in targetLayers)
             {
                 var autoColor = DxfColor.FromIndex(0);
                 world.Add(new XComment($" layer '{layer.Name}' "));
@@ -41,15 +52,24 @@ namespace IxMilia.Converters
                     new XAttribute("stroke", (layer.Color ?? autoColor).ToRGBString()),
                     new XAttribute("fill", (layer.Color ?? autoColor).ToRGBString()),
                     new XAttribute("class", $"dxf-layer {layer.Name}"));
-                foreach (var entity in source.Entities.Where(e => e.Layer == layer.Name))
+
+                var entities = DxfExtensions.AssociateEntitiesWithDescriptions(source.Entities.Where(e => e.Layer == layer.Name));
+                foreach (var entity in entities)
                 {
-                    var element = entity.ToXElement();
+                    var element = entity.Item2.ToXElement();
                     if (element != null)
                     {
+                        if ((entity.Item1 != null) && (options.AttributesGenerator!=null))
+                        {
+                            var attributes = options.AttributesGenerator(entity.Item1);
+                            foreach(KeyValuePair<string,string> entry in attributes)
+                            {
+                                element.SetAttributeValue(entry.Key, entry.Value);
+                            }
+                        }
                         g.Add(element);
                     }
                 }
-
                 world.Add(g);
             }
 
