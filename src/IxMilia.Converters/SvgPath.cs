@@ -116,6 +116,14 @@ namespace IxMilia.Converters
         }
     }
 
+    public class SvgClosePath: SvgPathSegment
+    {
+        public override string ToString()
+        {
+            return "Z";
+        }
+    }
+
     public class SvgArcToPath : SvgPathSegment
     {
         public double RadiusX { get; }

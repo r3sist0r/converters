@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -8,6 +9,7 @@ using System.Xml;
 using System.Xml.Linq;
 using IxMilia.Dxf;
 using IxMilia.Dxf.Entities;
+using IxMilia.Dxf.Objects;
 
 namespace IxMilia.Converters
 {
@@ -40,9 +42,9 @@ namespace IxMilia.Converters
             var world = new XElement(Xmlns + "g");
             IEnumerable<DxfLayer> targetLayers;
             if (options.Layers != null)
-                targetLayers = source.Layers.Where(l => options.Layers.Contains(l.Name)).OrderBy(l => l.Name);
+                targetLayers = source.Layers.Where(l => options.Layers.Contains(l.Name));
             else
-                targetLayers = source.Layers.OrderBy(l => l.Name);
+                targetLayers = source.Layers;
 
             foreach (var layer in targetLayers)
             {
@@ -249,6 +251,12 @@ namespace IxMilia.Converters
                     return line.ToXElement();
                 case DxfLwPolyline poly:
                     return poly.ToXElement();
+                case DxfPolyline polyline:
+                    return polyline.ToXElement();
+                case DxfSpline spline:
+                    return spline.ToXElement();
+                case DxfHatch hatch:
+                    return hatch.ToXElement();
                 default:
                     return null;
             }
@@ -326,15 +334,166 @@ namespace IxMilia.Converters
                 .AddVectorEffect();
         }
 
-        private static SvgPathSegment FromPolylineVertices(DxfLwPolylineVertex last, DxfLwPolylineVertex next)
+        public static XElement ToXElement(this DxfPolyline polyline)
         {
-            var dx = next.X - last.X;
-            var dy = next.Y - last.Y;
+            var path = polyline.GetSvgPath();
+            return new XElement(DxfToSvgConverter.Xmlns + "path",
+                new XAttribute("d", path.ToString()),
+                new XAttribute("fill-opacity", 0))
+                .AddStroke(polyline.Color)
+                .AddStrokeWidth(1.0)
+                .AddVectorEffect();
+        }
+
+        public static XElement ToXElement(this DxfSpline spline)
+        {
+            if (spline.DegreeOfCurve==3)
+            {
+                // Convert to SVG Bezier path
+                // Based on https://github.com/bjnortier/dxf/blob/master/src/toSVG.js
+                // TODO
+
+            }
+            return null;
+        }
+
+        internal static IEnumerable<SvgPathSegment> GetSvgSegmentsFromVertices(IEnumerable<DxfVertex> vertices, bool closed)
+        {
+            List<SvgPathSegment> segments = new List<SvgPathSegment>();
+
+            var first = vertices.First();
+            var last = first;
+            segments.Add(new SvgMoveToPath(last.Location.X, last.Location.Y));
+            foreach (var v in vertices.Skip(1))
+            {
+                segments.Add(FromVertices(last, v));
+            }
+
+            if (closed)
+            {
+                segments.Add(FromVertices(last, first));
+            }
+            return segments;
+        }
+
+        internal static IEnumerable<SvgPathSegment> GetSvgPathSegments(this DxfHatch.PolylineBoundaryPath poly)
+        {
+            return GetSvgSegmentsFromVertices(poly.Vertices,poly.IsClosed);
+        }
+
+        internal static IEnumerable<SvgPathSegment> GetSvgPathSegments(this IEnumerable<DxfHatch.LineBoundaryPathEdge> lineBoundaries)
+        {
+            List<SvgPathSegment> segments = new List<SvgPathSegment>();
+            var first_point = lineBoundaries.First().StartPoint;
+            segments.Add(new SvgMoveToPath(first_point.X, first_point.Y));
+
+            // Assume line boundaries are continuous and closed
+            foreach (var l in lineBoundaries.Take(lineBoundaries.Count()-1))
+                segments.Add(new SvgLineToPath(l.EndPoint.X, l.EndPoint.Y));
+            segments.Add(new SvgClosePath());
+            return segments;
+        }
+
+        internal static IEnumerable<SvgPathSegment> GetSvgPathSegments(this DxfHatch.CircularArcBoundaryPathEdge circularBoundary)
+        {
+            // TODO
+            return null;
+        }
+
+        internal static IEnumerable<SvgPathSegment> GetSvgPathSegments(this DxfHatch.EllipticArcBoundaryPathEdge ellipticArcBoundary)
+        {
+            // TODO
+            return null;
+        }
+
+        internal static IEnumerable<SvgPathSegment> GetSvgPathSegments(this DxfHatch.SplineBoundaryPathEdge splineBoundary)
+        {
+            // TODO
+            return null;
+        }
+
+        internal static IEnumerable<SvgPathSegment> GetSvgPathSegments(this DxfHatch.NonPolylineBoundaryPath non_poly)
+        {
+            List<SvgPathSegment> segments = new List<SvgPathSegment>();
+
+            // Support a list of LineBoundaryPathEdges or a single item
+            if (non_poly.Edges.Count == 1)
+            {
+                IEnumerable<SvgPathSegment> el = null;
+                switch (non_poly.Edges.First())
+                {
+                    case DxfHatch.CircularArcBoundaryPathEdge circular:
+                        el = GetSvgPathSegments(circular);
+                        break;
+                    case DxfHatch.EllipticArcBoundaryPathEdge elliptic:
+                        el = GetSvgPathSegments(elliptic);
+                        break;
+                    case DxfHatch.SplineBoundaryPathEdge spline:
+                        el = GetSvgPathSegments(spline);
+                        break;
+                }
+
+                if (el != null)
+                    segments.AddRange(el);
+            }
+            else
+            {
+                var lines = non_poly.Edges.Cast<DxfHatch.LineBoundaryPathEdge>();
+                var s = GetSvgPathSegments(lines);
+                segments.AddRange(s);
+            }
+            return segments;
+        }
+
+        internal static IEnumerable<SvgPathSegment> GetSvgPathSegments(this DxfHatch.BoundaryPathBase base_elem)
+        {
+            switch (base_elem)
+            {
+                case DxfHatch.NonPolylineBoundaryPath nonPoly:
+                    return nonPoly.GetSvgPathSegments();
+                case DxfHatch.PolylineBoundaryPath poly:
+                    return poly.GetSvgPathSegments();
+                default:
+                    return null;
+            }
+        }
+
+        public static XElement ToXElement(this DxfHatch hatch)
+        {
+            List<SvgPathSegment> segments = new List<SvgPathSegment>();
+
+            if (hatch.HatchStyle == DxfHatchStyle.EntireArea)
+            {
+                Debug.Assert(hatch.BoundaryPaths.Count == 1);
+                var s = GetSvgPathSegments(hatch.BoundaryPaths.First());
+                if (s!=null)
+                    segments.AddRange(s);
+            }
+            else if (hatch.HatchStyle == DxfHatchStyle.OutermostAreaOnly)
+            {
+                //Debug.Assert(hatch.BoundaryPaths.Count == 2);
+                return null;
+            }
+            else // DxfHatchStyle.OddParity not supported
+                return null;
+
+            var path = new SvgPath(segments);
+            return new XElement(DxfToSvgConverter.Xmlns + "path",
+                new XAttribute("d", path.ToString()),
+                new XAttribute("fill-opacity", 100),
+                new XAttribute("fill",hatch.Color.ToRGBString()))
+                .AddVectorEffect();
+        }
+
+        private static SvgPathSegment FromVertices(Tuple<double, double> last, Tuple<double,double> next, double bulge = 0.0)
+        {
+            var dx = next.Item1 - last.Item1;
+            var dy = next.Item2 - last.Item2;
             var dist = Math.Sqrt(dx * dx + dy * dy);
-            if (last.Bulge == 0.0 || IsCloseTo(dist, 1.0e-10))
+            if (bulge == 0.0 || IsCloseTo(dist, 1.0e-10))
             {
                 // line or a really short arc
-                return new SvgLineToPath(next.X, next.Y);
+                return new SvgLineToPath(next.Item1, next.Item2);
             }
 
             // given the following diagram:
@@ -354,15 +513,26 @@ namespace IxMilia.Converters
             // where O is the center of the circle, C is the midpoint between p1 and p2, calculate
             // the hypotenuse of the triangle Op1C to get the radius
 
-            var includedAngle = Math.Atan(Math.Abs(last.Bulge)) * 4.0;
+            var includedAngle = Math.Atan(Math.Abs(bulge)) * 4.0;
             var isLargeArc = includedAngle > Math.PI;
-            var isCounterClockwise = last.Bulge > 0.0;
+            var isCounterClockwise = bulge > 0.0;
 
             // find radius
             var oppositeLength = dist / 2.0;
             var radius = oppositeLength / Math.Sin(includedAngle / 2.0);
 
-            return new SvgArcToPath(radius, radius, 0.0, isLargeArc, isCounterClockwise, next.X, next.Y);
+            return new SvgArcToPath(radius, radius, 0.0, isLargeArc, isCounterClockwise, next.Item1, next.Item2);
+        }
+        private static SvgPathSegment FromVertices(DxfVertex last, DxfVertex next)
+        {
+            return FromVertices(new Tuple<double, double>(last.Location.X, last.Location.Y),
+                new Tuple<double, double>(next.Location.X, next.Location.Y), last.Bulge);
+        }
+
+        private static SvgPathSegment FromPolylineVertices(DxfLwPolylineVertex last, DxfLwPolylineVertex next)
+        {
+            return FromVertices(new Tuple<double, double>(last.X, last.Y),
+                new Tuple<double, double>(next.X, next.Y), last.Bulge);
         }
 
         internal static SvgPath GetSvgPath(this DxfArc arc)
@@ -395,6 +565,11 @@ namespace IxMilia.Converters
             }
 
             return new SvgPath(segments);
+        }
+
+        internal static SvgPath GetSvgPath(this DxfPolyline poly)
+        {
+            return new SvgPath(GetSvgSegmentsFromVertices(poly.Vertices, poly.IsClosed));
         }
 
         private static XElement AddStroke(this XElement element, DxfColor color)

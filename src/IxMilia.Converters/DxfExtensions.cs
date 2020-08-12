@@ -49,22 +49,24 @@ namespace IxMilia.Converters
                         point = text2.Location;
                         break;
                     default:
-                        var boundingBox = entity.GetBoundingBox().Value;
-                        point = (boundingBox.MinimumPoint + boundingBox.MaximumPoint) / 2;
+                        var bb = entity.GetBoundingBox();
+                        if (bb.HasValue == true)
+                        {
+                            var boundingBox = bb.Value;
+                            point = (boundingBox.MinimumPoint + boundingBox.MaximumPoint) / 2;
+                        }
                         break;
                 }
 
-                if (desc == null) // graphical object
-                {
-                    graphical_object_locations.Add(new LocatedEntity { point = point, entity = entity });
-                }
-                else if (point != DxfPoint.Origin)
+                if ((point != DxfPoint.Origin) && (desc != null))
                 {
                     LocatedDescription md;
                     md.point = point;
                     md.description = desc;
                     desciptions_locations.Add(md);
                 }
+                else
+                    graphical_object_locations.Add(new LocatedEntity { point = point, entity = entity });
             }
 
             if (desciptions_locations.Count == 0)
