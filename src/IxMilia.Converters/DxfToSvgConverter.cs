@@ -89,7 +89,7 @@ namespace IxMilia.Converters
                                 element.SetAttributeValue(entry.Key, entry.Value);
                             }
                         }
-                        element.SetAttributeValue("class", $"dxf-entity {entity.Item2.EntityTypeString} {entity.Item2.MyHandle}");
+                        element.SetAttributeValue("class", $"dxf-entity {entity.Item2.EntityTypeString}");
                         g.Add(element);
                     }
                 }
