@@ -1,4 +1,5 @@
-﻿using System;
+﻿using IxMilia.Dxf;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -68,19 +69,106 @@ namespace IxMilia.Converters
         }
     }
 
+    public struct Location
+    {
+        public uint X;
+        public uint Y;
+        public Location(DxfPoint point)
+        {
+            X = (uint)point.X;
+            Y = (uint)point.Y;
+        }
+
+        public Location(double x, double y)
+        {
+            X = (uint)x;
+            Y = (uint)y;
+        }
+
+        public static bool operator ==(Location p1, Location p2)
+        {
+            return p1.X == p2.X && p1.Y == p2.Y;
+        }
+
+        public static bool operator !=(Location p1, Location p2)
+        {
+            return !(p1 == p2);
+        }
+
+        public override string ToString()
+        {
+            return string.Format("{0} {1}", X, Y);
+        }
+    }
+
     public abstract class SvgPathSegment
     {
+        public abstract Location GetEndPoint();
+    }
+
+    public class SvgCurveToPath : SvgPathSegment
+    {
+        public Location CP1 { get; }
+        public Location CP2 { get; }
+        
+        public Location CP3 { get; }
+
+        public override Location GetEndPoint() { return CP3; }
+
+        public SvgCurveToPath(DxfPoint c1, DxfPoint c2, DxfPoint c3)
+        {
+            CP1 = new Location(c1);
+            CP2 = new Location(c2);
+            CP3 = new Location(c3);
+        }
+
+        public override string ToString()
+        {
+            return string.Join(" ", new[]
+            {
+                "C", // CurveTo
+                CP1.ToString(),
+                CP2.ToString(),
+                CP3.ToString()
+            });
+        }
+    }
+
+    public class SvgQuadraticCurveToPath : SvgPathSegment
+    {
+        public Location CP1 { get; }
+        public Location CP2 { get; }
+
+        public override Location GetEndPoint() { return CP2; }
+        public SvgQuadraticCurveToPath(DxfPoint c1, DxfPoint c2)
+        {
+            CP1 = new Location(c1);
+            CP2 = new Location(c2);
+        }
+
+        public override string ToString()
+        {
+            return string.Join(" ", new[]
+            {
+                "Q", // Quadratic Bezier curve
+                CP1.ToString(),
+                CP2.ToString()
+            });
+        }
     }
 
     public class SvgMoveToPath : SvgPathSegment
     {
-        public double LocationX { get; }
-        public double LocationY { get; }
+        public Location Location { get; }
 
+        public override Location GetEndPoint() { return Location; }
         public SvgMoveToPath(double locationX, double locationY)
         {
-            LocationX = locationX;
-            LocationY = locationY;
+            Location = new Location(locationX,locationY);
+        }
+        public SvgMoveToPath(DxfPoint point)
+        {
+            Location = new Location(point);
         }
 
         public override string ToString()
@@ -88,21 +176,19 @@ namespace IxMilia.Converters
             return string.Join(" ", new[]
             {
                 "M", // move absolute
-                LocationX.ToDisplayString(),
-                LocationY.ToDisplayString()
+                Location.ToString()
             });
         }
     }
 
     public class SvgLineToPath : SvgPathSegment
     {
-        public double LocationX { get; }
-        public double LocationY { get; }
+        public Location Location { get; }
 
+        public override Location GetEndPoint() { return Location; }
         public SvgLineToPath(double locationX, double locationY)
         {
-            LocationX = locationX;
-            LocationY = locationY;
+            Location = new Location(locationX,locationY);
         }
 
         public override string ToString()
@@ -110,14 +196,14 @@ namespace IxMilia.Converters
             return string.Join(" ", new[]
             {
                 "L", // line absolute
-                LocationX.ToDisplayString(),
-                LocationY.ToDisplayString()
+                Location.ToString()
             });
         }
     }
 
     public class SvgClosePath: SvgPathSegment
     {
+        public override Location GetEndPoint() { return new Location(); }
         public override string ToString()
         {
             return "Z";
@@ -131,9 +217,9 @@ namespace IxMilia.Converters
         public double XAxisRotation { get; }
         public bool IsLargeArc { get; }
         public bool IsCounterClockwiseSweep { get; }
-        public double EndPointX { get; }
-        public double EndPointY { get; }
+        public Location EndPoint { get; }
 
+        public override Location GetEndPoint() { return EndPoint; }
         public SvgArcToPath(double radiusX, double radiusY, double xAxisRotation, bool isLargeArc, bool isCounterClockwiseSweep, double endPointX, double endPointY)
         {
             RadiusX = radiusX;
@@ -141,8 +227,7 @@ namespace IxMilia.Converters
             XAxisRotation = xAxisRotation;
             IsLargeArc = isLargeArc;
             IsCounterClockwiseSweep = isCounterClockwiseSweep;
-            EndPointX = endPointX;
-            EndPointY = endPointY;
+            EndPoint = new Location(endPointX,endPointY);
         }
 
         public override string ToString()
@@ -155,8 +240,7 @@ namespace IxMilia.Converters
                 XAxisRotation.ToDisplayString(),
                 IsLargeArc ? 1 : 0,
                 IsCounterClockwiseSweep ? 1 : 0,
-                EndPointX.ToDisplayString(),
-                EndPointY.ToDisplayString()
+                EndPoint.ToString()
             });
         }
     }

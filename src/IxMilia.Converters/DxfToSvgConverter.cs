@@ -5,6 +5,8 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 using IxMilia.Dxf;
@@ -55,7 +57,25 @@ namespace IxMilia.Converters
                     new XAttribute("fill", (layer.Color ?? autoColor).ToRGBString()),
                     new XAttribute("class", $"dxf-layer {layer.Name}"));
 
-                var entities = DxfExtensions.AssociateEntitiesWithDescriptions(source.Entities.Where(e => e.Layer == layer.Name));
+                
+
+                List<Tuple<DxfEntity, uint>> sorted_entities = new List<Tuple<DxfEntity, uint>>();
+                sorted_entities.AddRange(source.Entities.Where(e => e.Layer == layer.Name).Select(e => new Tuple<DxfEntity, uint>(e, uint.MaxValue)));
+
+                var sort_tables = source.Objects.OfType<DxfSortentsTable>();
+                foreach(var sort_table in sort_tables)
+                {
+                    var entities_with_draw = sort_table.EntitiesWithDrawOrder();
+
+                    for (int i=0; i<entities_with_draw.Count; ++i)
+                    {
+                        var match_idx = sorted_entities.FindIndex(e => e.Item1 == entities_with_draw[i].Item1);
+                        if (match_idx != -1)
+                            sorted_entities[match_idx] = new Tuple<DxfEntity, uint>(sorted_entities[match_idx].Item1, entities_with_draw[i].Item2);
+                    }
+                }
+                sorted_entities.Sort((a, b) => a.Item2.CompareTo(b.Item2));
+                var entities = DxfExtensions.AssociateEntitiesWithDescriptions(sorted_entities.Select(e=>e.Item1));
                 foreach (var entity in entities)
                 {
                     var element = entity.Item2.ToXElement();
@@ -69,6 +89,7 @@ namespace IxMilia.Converters
                                 element.SetAttributeValue(entry.Key, entry.Value);
                             }
                         }
+                        element.SetAttributeValue("class", $"dxf-entity {entity.Item2.EntityTypeString} {entity.Item2.MyHandle}");
                         g.Add(element);
                     }
                 }
@@ -347,14 +368,16 @@ namespace IxMilia.Converters
 
         public static XElement ToXElement(this DxfSpline spline)
         {
-            if (spline.DegreeOfCurve==3)
-            {
-                // Convert to SVG Bezier path
-                // Based on https://github.com/bjnortier/dxf/blob/master/src/toSVG.js
-                // TODO
+            Spline spline1 = new Spline(spline);
+            PiecewiseBezier piecewise = new PiecewiseBezier(spline1);
 
-            }
-            return null;
+            var path = piecewise.ToSvgPath();
+            return new XElement(DxfToSvgConverter.Xmlns + "path",
+                new XAttribute("d", path.ToString()),
+                new XAttribute("fill-opacity", 0))
+                .AddStroke(spline.Color)
+                .AddStrokeWidth(1.0)
+                .AddVectorEffect();
         }
 
         internal static IEnumerable<SvgPathSegment> GetSvgSegmentsFromVertices(IEnumerable<DxfVertex> vertices, bool closed)
@@ -394,6 +417,14 @@ namespace IxMilia.Converters
             return segments;
         }
 
+        internal static IEnumerable<SvgPathSegment> GetSvgPathSegments(this DxfHatch.LineBoundaryPathEdge lineBoundary)
+        {
+            List<SvgPathSegment> segments = new List<SvgPathSegment>();
+            segments.Add(new SvgMoveToPath(lineBoundary.StartPoint.X, lineBoundary.StartPoint.Y));
+            segments.Add(new SvgLineToPath(lineBoundary.EndPoint.X, lineBoundary.EndPoint.Y));
+            return segments;
+        }
+
         internal static IEnumerable<SvgPathSegment> GetSvgPathSegments(this DxfHatch.CircularArcBoundaryPathEdge circularBoundary)
         {
             // TODO
@@ -408,20 +439,24 @@ namespace IxMilia.Converters
 
         internal static IEnumerable<SvgPathSegment> GetSvgPathSegments(this DxfHatch.SplineBoundaryPathEdge splineBoundary)
         {
-            // TODO
-            return null;
+            Spline spline = new Spline(splineBoundary);
+            PiecewiseBezier piecewiseBezier = new PiecewiseBezier(spline);
+            var paths = piecewiseBezier.ToSvgPath().Segments;
+            return paths;
         }
 
         internal static IEnumerable<SvgPathSegment> GetSvgPathSegments(this DxfHatch.NonPolylineBoundaryPath non_poly)
         {
             List<SvgPathSegment> segments = new List<SvgPathSegment>();
 
-            // Support a list of LineBoundaryPathEdges or a single item
-            if (non_poly.Edges.Count == 1)
+            foreach(var edge in non_poly.Edges)
             {
                 IEnumerable<SvgPathSegment> el = null;
-                switch (non_poly.Edges.First())
+                switch (edge)
                 {
+                    case DxfHatch.LineBoundaryPathEdge line:
+                        el = GetSvgPathSegments(line);
+                        break;
                     case DxfHatch.CircularArcBoundaryPathEdge circular:
                         el = GetSvgPathSegments(circular);
                         break;
@@ -436,13 +471,7 @@ namespace IxMilia.Converters
                 if (el != null)
                     segments.AddRange(el);
             }
-            else
-            {
-                var lines = non_poly.Edges.Cast<DxfHatch.LineBoundaryPathEdge>();
-                var s = GetSvgPathSegments(lines);
-                segments.AddRange(s);
-            }
-            return segments;
+            return OptimizePath(segments);
         }
 
         internal static IEnumerable<SvgPathSegment> GetSvgPathSegments(this DxfHatch.BoundaryPathBase base_elem)
@@ -458,29 +487,43 @@ namespace IxMilia.Converters
             }
         }
 
+        public static IEnumerable<SvgPathSegment> OptimizePath(IEnumerable<SvgPathSegment> input_segments)
+        {
+            List<SvgPathSegment> ret = new List<SvgPathSegment>();
+
+            var first_seg = input_segments.First();
+            Debug.Assert(first_seg is SvgMoveToPath);
+            Location current_loc = first_seg.GetEndPoint();
+            ret.Add(first_seg);
+            foreach(var seg in input_segments.Skip(1))
+            {
+                if (seg.GetEndPoint() != current_loc)
+                    ret.Add(seg);
+                current_loc = seg.GetEndPoint();
+            }
+
+            return ret;
+        }
+
         public static XElement ToXElement(this DxfHatch hatch)
         {
             List<SvgPathSegment> segments = new List<SvgPathSegment>();
 
-            if (hatch.HatchStyle == DxfHatchStyle.EntireArea)
+            // TODO: support/check all HatchStyle
+            if (hatch.HatchStyle == DxfHatchStyle.OddParity)
+                return null;
+
+            foreach(var bp in hatch.BoundaryPaths)
             {
-                Debug.Assert(hatch.BoundaryPaths.Count == 1);
-                var s = GetSvgPathSegments(hatch.BoundaryPaths.First());
-                if (s!=null)
+                var s = GetSvgPathSegments(bp);
+                if (s != null)
                     segments.AddRange(s);
             }
-            else if (hatch.HatchStyle == DxfHatchStyle.OutermostAreaOnly)
-            {
-                //Debug.Assert(hatch.BoundaryPaths.Count == 2);
-                return null;
-            }
-            else // DxfHatchStyle.OddParity not supported
-                return null;
 
             var path = new SvgPath(segments);
             return new XElement(DxfToSvgConverter.Xmlns + "path",
                 new XAttribute("d", path.ToString()),
-                new XAttribute("fill-opacity", 100),
+                new XAttribute("fill-opacity", hatch.Transparency<100 ? 100-hatch.Transparency: 100),
                 new XAttribute("fill",hatch.Color.ToRGBString()))
                 .AddVectorEffect();
         }
@@ -574,7 +617,7 @@ namespace IxMilia.Converters
 
         private static XElement AddStroke(this XElement element, DxfColor color)
         {
-            if (color.IsIndex)
+            //if (color.IsIndex)
             {
                 var stroke = element.Attribute("stroke");
                 var colorString = color.ToRGBString();
