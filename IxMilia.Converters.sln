@@ -5,8 +5,6 @@ VisualStudioVersion = 16.0.29409.12
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "IxMilia.Converters", "src\IxMilia.Converters\IxMilia.Converters.csproj", "{9C552EDC-0418-4868-999D-3A11C6C246A3}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "IxMilia.Converters.Test", "src\IxMilia.Converters.Test\IxMilia.Converters.Test.csproj", "{30471B89-FC47-4788-BB4B-D111A65E9240}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "IxMilia.Dxf", "src\IxMilia.Dxf\src\IxMilia.Dxf\IxMilia.Dxf.csproj", "{32DA7193-FDEB-4BDD-84DC-AA21FC136906}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "IxMilia.Pdf", "src\IxMilia.Pdf\src\IxMilia.Pdf\IxMilia.Pdf.csproj", "{4EAE1332-1FD4-4630-8CA3-B9B15FD6A499}"
