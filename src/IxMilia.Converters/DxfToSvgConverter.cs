@@ -15,7 +15,7 @@ using IxMilia.Dxf.Objects;
 
 namespace IxMilia.Converters
 {
-    using AttributeGeneratorFunc = Func<string, IDictionary<string, string>>;
+    using AttributeGeneratorFunc = Func<Tuple<string,DxfEntity>, IDictionary<string, string>>;
     public struct DxfToSvgConverterOptions
     {
         public ConverterDxfRect DxfSource { get; }
@@ -81,15 +81,15 @@ namespace IxMilia.Converters
                     var element = entity.Item2.ToXElement();
                     if (element != null)
                     {
-                        if ((entity.Item1 != null) && (options.AttributesGenerator!=null))
+                        if (options.AttributesGenerator!=null)
                         {
-                            var attributes = options.AttributesGenerator(entity.Item1);
+                            var attributes = options.AttributesGenerator(entity);
                             foreach(KeyValuePair<string,string> entry in attributes)
                             {
                                 element.SetAttributeValue(entry.Key, entry.Value);
                             }
                         }
-                        element.SetAttributeValue("class", $"dxf-entity {entity.Item2.EntityTypeString}");
+                        element.SetAttributeValue("class", $"dxf-entity-{entity.Item2.EntityTypeString.ToLower()}");
                         g.Add(element);
                     }
                 }
