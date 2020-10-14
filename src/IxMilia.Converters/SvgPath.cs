@@ -19,7 +19,12 @@ namespace IxMilia.Converters
             return string.Join(" ", Segments);
         }
 
-        public static SvgPath FromEllipse(double centerX, double centerY, double majorAxisX, double majorAxisY, double minorAxisRatio, double startAngle, double endAngle)
+        private static bool IsCloseTo(double a, double b)
+        {
+            return Math.Abs(a - b) < 1.0e-8;
+        }
+
+        public static SvgPath FromEllipse(DxfVector normal, double centerX, double centerY, double majorAxisX, double majorAxisY, double minorAxisRatio, double startAngle, double endAngle)
         {
             // large arc and counterclockwise computations all rely on the end angle being greater than the start
             while (endAngle < startAngle)
@@ -27,7 +32,17 @@ namespace IxMilia.Converters
                 endAngle += Math.PI * 2.0;
             }
 
-            var axisAngle = Math.Atan2(majorAxisY, majorAxisY);
+            if (IsCloseTo(normal.Z, -1.0))
+            {
+                // Angles are expressed in OCS
+                // In the case of normal (0,0,-1), startPoint/endPoints are symetric along MajorAxis
+                startAngle = startAngle * -1.0;
+                endAngle = endAngle * -1.0;
+            }
+            var axisAngle = Math.Atan2(majorAxisY, majorAxisX);
+            startAngle += axisAngle;
+            endAngle += axisAngle;
+
             var majorAxisLength = Math.Sqrt(majorAxisX * majorAxisX + majorAxisY * majorAxisY);
             var minorAxisLength = majorAxisLength * minorAxisRatio;
 

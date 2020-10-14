@@ -582,12 +582,12 @@ namespace IxMilia.Converters
         {
             var startAngle = arc.StartAngle * Math.PI / 180.0;
             var endAngle = arc.EndAngle * Math.PI / 180.0;
-            return SvgPath.FromEllipse(arc.Center.X, arc.Center.Y, arc.Radius, 0.0, 1.0, startAngle, endAngle);
+            return SvgPath.FromEllipse(arc.Normal, arc.Center.X, arc.Center.Y, arc.Radius, 0.0, 1.0, startAngle, endAngle);
         }
 
         internal static SvgPath GetSvgPath(this DxfEllipse ellipse)
         {
-            return SvgPath.FromEllipse(ellipse.Center.X, ellipse.Center.Y, ellipse.MajorAxis.X, ellipse.MajorAxis.Y, ellipse.MinorAxisRatio, ellipse.StartParameter, ellipse.EndParameter);
+            return SvgPath.FromEllipse(ellipse.Normal, ellipse.Center.X, ellipse.Center.Y, ellipse.MajorAxis.X, ellipse.MajorAxis.Y, ellipse.MinorAxisRatio, ellipse.StartParameter, ellipse.EndParameter);
         }
 
         internal static SvgPath GetSvgPath(this DxfLwPolyline poly)
