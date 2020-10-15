@@ -86,18 +86,18 @@ namespace IxMilia.Converters
 
     public struct Location
     {
-        public uint X;
-        public uint Y;
+        public int X;
+        public int Y;
         public Location(DxfPoint point)
         {
-            X = (uint)point.X;
-            Y = (uint)point.Y;
+            X = (int)point.X;
+            Y = (int)point.Y;
         }
 
         public Location(double x, double y)
         {
-            X = (uint)x;
-            Y = (uint)y;
+            X = (int)x;
+            Y = (int)y;
         }
 
         public static bool operator ==(Location p1, Location p2)
