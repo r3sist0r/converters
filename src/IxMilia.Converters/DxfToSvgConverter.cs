@@ -103,8 +103,6 @@ namespace IxMilia.Converters
                 : options.SvgDestination.ElementHeight / options.DxfSource.Height;
 
             var root = new XElement(Xmlns + "svg",
-                new XAttribute("width", options.SvgDestination.ElementWidth.ToDisplayString()),
-                new XAttribute("height", options.SvgDestination.ElementHeight.ToDisplayString()),
                 new XAttribute("viewBox", $"0 0 {options.SvgDestination.ElementWidth.ToDisplayString()} {options.SvgDestination.ElementHeight.ToDisplayString()}"),
                 new XAttribute("version", "1.1"),
                 new XAttribute("class", "dxf-drawing"),
