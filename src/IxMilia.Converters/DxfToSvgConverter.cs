@@ -81,15 +81,26 @@ namespace IxMilia.Converters
                     var element = entity.Item2.ToXElement();
                     if (element != null)
                     {
-                        if (options.AttributesGenerator!=null)
+                        var svg_id = entity.Item2.HandleStr; // By default use Dxf handle as svg element id
+                        bool svg_id_inserted = false;
+                        if ((entity.Item1!=null) && (options.AttributesGenerator!=null))
                         {
                             var attributes = options.AttributesGenerator(entity);
                             foreach(KeyValuePair<string,string> entry in attributes)
                             {
                                 element.SetAttributeValue(entry.Key, entry.Value);
+
+                                if (entry.Key == "id")
+                                {
+                                    svg_id = entry.Value;
+                                    svg_id_inserted = true;
+                                }
                             }
                         }
-                        element.SetAttributeValue("class", $"dxf-entity-{entity.Item2.EntityTypeString.ToLower()}");
+                        if (svg_id_inserted==false)
+                            element.SetAttributeValue("id",svg_id);
+                        
+                        element.SetAttributeValue("class", $"dxf-entity-{entity.Item2.EntityTypeString.ToLower()} {svg_id}");
                         g.Add(element);
                     }
                 }
